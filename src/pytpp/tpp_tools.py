@@ -74,15 +74,18 @@ def fastq2reads(infile,outfile,maxreads):
 # if the variable character with the read number occurs in the middle, move it to the end
 
 def fix_paired_headers_for_bwa(reads1,reads2):
+  line_num=0
   a = open(reads1)
   b = open(reads2)
-  temp1 = "temp."+reads1
-  temp2 = "temp."+reads2
+  # 20161005 curtish; BWA fails with relative paths
+  temp1 = reads1+".temp_fix4bwa"
+  temp2 = reads2+".temp_fix4bwa"
   c = open(temp1,"w")
   d = open(temp2,"w")
   tot = 0
   try:
    while True:
+    line_num+=1
     e = a.readline().rstrip()
     f = b.readline().rstrip()
     if len(e)<=2 or len(f)<=2: break
@@ -91,9 +94,11 @@ def fix_paired_headers_for_bwa(reads1,reads2):
       if tot%1000000==0: message("%s reads processed" % tot)
       # find first position where there is a difference
       i,n = 0,len(e)
-      if len(f)!=n: raise Exception('Error: unexpected format of headers in .fastq files')
+      # curtish; include line_num in the error message for easier trouble shooting
+      if len(f)!=n: raise Exception('[%s:%d] Error: unexpected format of headers in .fastq files: len("%s")!=%d' %(reads2, line_num, f,n))
       while i<n and e[i]==f[i]: i += 1
-      if i==n: raise Exception('Error: unexpected format of headers in .fastq files')
+      # curtish; include line_num in the error message for easier trouble shooting
+      if i==n: raise Exception('[%s:%d] Error: unexpected format of headers in .fastq files: %d==%d (a=%s, b=%s)' % (reads1, line_num, i, n, e, f))
       e = e.replace(' ','_')
       f = f.replace(' ','_')
       e = e.replace('/','_') # this was neceesary for bwa 0.7.10 but not 0.7.12
@@ -139,7 +144,9 @@ def extract_staggered(infile,outfile,vars):
   Tn = vars.prefix
   message("prefix sequence: %s" % vars.prefix)
   lenTn = len(Tn)
-  ADAPTER2 = "TACCACGACCA"
+  # 20161005 curtish; Niederweis-Zhang protocol trimmed to same length as Long2016 adapter2
+  ADAPTER2 = "CGACCACGACC" #"AAA" 
+  message("ADAPTER2 sequence: %s" % ADAPTER2)
   lenADAP = len(ADAPTER2)
 
   #P,Q = 5,10 # 1-based inclusive positions to look for start of Tn prefix
@@ -369,6 +376,7 @@ def read_counts(ref,sam,vars):
   return sites # (coord, Fwd_Rd_Ct, Fwd_Templ_Ct, Rev_Rd_Ct, Rev_Templ_Ct, Tot_Rd_Ct, Tot_Templ_Ct)
 
 def driver(vars):
+  # filename suffixes
   vars.reads1 = vars.base+".reads1"
   vars.reads2 = vars.base+".reads2"
   vars.tgtta1 = vars.base+".tgtta1"
@@ -383,6 +391,7 @@ def driver(vars):
   vars.wig = vars.base+".wig"
   vars.stats = vars.base+".tn_stats"
 
+  # default constant sequences
   if vars.prefix==None:
     if vars.transposon=="Tn5": vars.prefix = "TAAGAGACAG"
     elif vars.transposon=="Himar1": vars.prefix = "ACTTATCAGCCAACCTGTTA"
@@ -396,13 +405,14 @@ def driver(vars):
 
   except ValueError as err:
     message("")
-    message("%s" % " ".join(err.args))
+    # curtish - prevent message from erroring out on int value
+    message("%s" % " ".join(str(err.args))) 
     message("Exiting.")
     sys.exit()
 
   except IOError as err:
     message("")
-    message("%s" % " ".join(err.args))
+    message("%s" % " ".join(str(err.args)))
     message("Make sure you have read/write access in the directories containing the necessary files.")
     message("Note: If TPP cannot find index files for the FASTA sequence (i.e. *.fna.bwt, *.fna.pac, *.fna.ann, *.fna.sa), it will attempt to create them.")
     message("Exiting.")
@@ -412,9 +422,15 @@ def driver(vars):
   message("Done.")
 
 def uncompress(filename):
-   outfil = open(filename[0:-3], "w+")
-   for line in gzip.open(filename):
-      outfil.write(line)
+   # curtish; skip uncompress if it has already been done - faster trouble shooting
+   fqfilename = filename[0:-3]
+   if(os.path.exists(fqfilename)):
+     message("SKIP:uncompress: file already exists: %s" %(fqfilename))
+   else:
+     outfil = open(filename[0:-3], "w+")
+     for line in gzip.open(filename):
+       outfil.write(line)
+     outfil.close()
    return filename[0:-3]
 
 def extract_reads(vars):
@@ -438,10 +454,14 @@ def extract_reads(vars):
     if vars.fq2.endswith('.gz'):
        vars.fq2 = uncompress(vars.fq2)
 
+    # curtish; skip fastq2reads if already done - faster trouble shooting
     if(flag[0] == 'FASTQ'):
-        message("fastq2reads: %s -> %s" % (vars.fq1,vars.reads1))
-        fastq2reads(vars.fq1,vars.reads1,vars.maxreads)
+        if( os.path.exists(vars.reads1) ):
+          message("SKIP:fastq2reads: %s -> %s" % (vars.fq1,vars.reads1))
+        else:
+          fastq2reads(vars.fq1,vars.reads1,vars.maxreads)
     else:
+        message("fastq2reads: %s -> %s" % (vars.fq1,vars.reads1))
         shutil.copyfile(vars.fq1, vars.reads1)
 
     if vars.single_end==True:
@@ -458,6 +478,9 @@ def extract_reads(vars):
         shutil.copyfile(vars.fq2, vars.reads2)
 
     message("fixing headers of paired reads for bwa...")
+    # curtish; additional trouble shooting output
+    message("    reads1=%s" % (vars.reads1) )
+    message("    reads2=%s" % (vars.reads2) )
     fix_paired_headers_for_bwa(vars.reads1,vars.reads2)
 
     message("extracting barcodes and genomic parts of reads...")
@@ -488,9 +511,14 @@ def extract_reads(vars):
 #    could the start of these be shifted slightly?
 
 def extract_barcodes(fn_tgtta2,fn_barcodes2,fn_genomic2,mm1):
-  const1 = "GATGGCCGGTGGATTTGTG"
-  const2 = "TGGTCGTGGTAT"
-  const3 = "TAACAGGTTGGCTGATAAG"
+  # 20161013 curtish replace default const regions with actual for Niederweis protocol
+  const1 = "GTCAAGTCTCGCAGATGATAAGG"
+  const2 = "CTTGGTTTGGTCGTGGTCG"
+  const3 = "TAACAGGTTGGCT"
+  message("const1=%s" % const1 )
+  message("const2=%s" % const2 )
+  message("const3=%s" % const3)
+
   nconst1,nconst2,nconst3 = len(const1),len(const2),len(const3)
   fl_barcodes2 = open(fn_barcodes2,"w")
   fl_genomic2 = open(fn_genomic2,"w")
@@ -728,7 +756,10 @@ def generate_output(vars):
 
   #output.write("# most_abundant_prefix: %s reads start with %s\n" % (temp[0][1],temp[0][0]))
   # since these are reads (within Tn prefix stripped off), I expect ~1/4 to match Tn prefix
+  # curtish; add header to run statistics file naming columns
+  hvals = ["read1","read2", "tot_reads/pairs","TGTTA_reads","reads1_mapped", "reads2_mapped", "TA_read_count",  "template_count", "template_ratio", "TA_sites", "TAs_hit", "density", "max_site", "NZ_mean", "FR_corr", "BC_corr", "primer_matches", "vector_matches", "adapter_matches", "misprimed" ]
   vals = [vars.fq1,vars.fq2,tot_reads,vars.tot_tgtta,vars.r1,vars.r2,vars.mapped,rc,tc,ratio,ta_sites,tas_hit,max_tc,density,max_coord,NZmean,FR_corr,BC_corr,nprimer,nvector,nadapter,misprimed]
+  output.write("#"+'\t'.join(hvals)+"\n")
   output.write('\t'.join([str(x) for x in vals])+"\n")
   output.close()
 
