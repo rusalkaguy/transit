@@ -1,4 +1,4 @@
-# TRANSIT 2.0
+# TRANSIT 2.0.2_zhang
 
 
 **New in Version 2.0+**
@@ -13,11 +13,35 @@
 - Misc. Bug fixes
 - **New [mailing list](https://groups.google.com/forum/#!forum/tnseq-transit/join)**
 
-
+**Verision 2.0.2_zhang changes (October, 2019)**
+- change hardcoded values in tpp.py to match Zhang/Niederweis protocol
+  - ADAPTER2="CGACCACGACC"
+  - const1 = "GTCAAGTCTCGCAGATGATAAGG"
+  - const2 = "CTTGGTTTGGTCGTGGTCG"
+  - const3 = "TAACAGGTTGGCT"
+  
 
 Welcome! This is the distribution for the TRANSIT and TPP tools developed by the Ioerger Lab.
 
 TRANSIT is a tool for the analysis of Tn-Seq data. It provides an easy to use graphical interface and access to three different analysis methods that allow the user to determine essentiality in a single condition as well as between conditions.
+
+## v2.0.2_zhang: hardcoded alternate set of adapter/const sequences.
+
+The easiest way to install/run this is to use Anaconda3 to create a transit enviroment, including all dependencies,
+```
+conda create -n transit233 -c bioconda transit=2.3.3 bwa
+```
+
+Then git clone this branch of this repository
+```
+git clone https://github.com/rusalkaguy/transit.git transit_v2.0.2_zhang
+cd transit_v2.0.2_zhang
+git checkout v2.0.2_zhang
+```
+
+Finally, activate the environment, but then run the cloned TRANIST/TPP (```./transit_v2.0.2_zhang/src/tpp.py ...```)
+
+This version should only be used for processing .fastq files into .wig files. Once you have your .wig files, please conduct statistical analyses with the latest avaiable version of TRANSIT.
 
 
 
